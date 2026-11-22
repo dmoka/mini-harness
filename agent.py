@@ -585,7 +585,16 @@ def run_hooks(event: str, payload: dict) -> str | None:
 
 # ── COMMAND LINE ────────────────────────────────────────────────────────
 
+USAGE = """usage: agent.py [--plan] "task"   run one task (--plan: plan mode first)
+       agent.py --consolidate    merge and clean up the memory folder
+       agent.py                  chat mode
+env:   MINI_HARNESS_MODEL, MINI_HARNESS_BACKEND=sdk|claude-cli"""
+
+
 def main(argv: list[str]):
+    if argv[:1] in (["-h"], ["--help"]):
+        print(USAGE)
+        return
     if argv[:1] == ["--consolidate"]:
         print(consolidate_memory())
         return
