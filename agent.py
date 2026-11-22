@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 MODEL = os.environ.get("MINI_HARNESS_MODEL", "claude-opus-5-5")
+BACKEND = os.environ.get("MINI_HARNESS_BACKEND", "sdk")  # or "claude-cli"
 ROOT = Path.cwd().resolve()
 AGENT_DIR = ".agent"  # settings.json and memory/ live here
 RULES_FILE = "AGENTS.md"
@@ -44,6 +45,9 @@ _client = None
 def call_model(system: str, messages: list, tools: list):
     """One model call. The tests replace this function with a fake."""
     global _client
+    if BACKEND == "claude-cli":  # no API key: run `claude -p` (see claude_cli.py)
+        from claude_cli import call_claude_cli
+        return call_claude_cli(system, messages, tools, MODEL, ROOT)
     import anthropic
 
     _client = _client or anthropic.Anthropic()
@@ -91,7 +95,8 @@ def run_loop(s: Session, task: str) -> str:
             calls = [b for b in response.content if b.type == "tool_use"]
             if not calls:
                 text = final_text(response)
-                if response.stop_reason == "end_turn" and stop_blocks < 3:
+                # no Stop hook in plan mode: the model cannot edit, so it cannot fix
+                if response.stop_reason == "end_turn" and s.mode == "act" and stop_blocks < 3:
                     blocked = run_hooks("Stop", {"final_text": text})  # pattern 12
                     if blocked:
                         stop_blocks += 1
@@ -136,7 +141,7 @@ def call_tool(name: str, args: dict, s: Session) -> str:
             return f"Blocked by hook: {blocked}"
         try:
             result = str(TOOLS[name].fn(**args))
-        except (ToolError, OSError, TypeError, re.error) as e:  # pattern 11
+        except Exception as e:  # pattern 11: every failure is text for the model
             return f"Error: {e}"
         run_hooks("PostToolUse", {"tool_name": name, "tool_input": args,
                                   "tool_response": result[:2000]})
@@ -152,9 +157,10 @@ def final_text(response) -> str:
 
 
 def ask_human(question: str) -> bool:
-    if CHILD or not sys.stdin.isatty():
-        return False  # nobody can answer, so the safe answer is no
-    return input(f"{question} [y/N] ").strip().lower() == "y"
+    if CHILD:
+        return False  # a worktree agent has no human, so the safe answer is no
+    print(f"{question} [y/N] ", end="", file=sys.stderr, flush=True)
+    return sys.stdin.readline().strip().lower() == "y"  # end of input ("") is a no
 
 
 # ── PATTERN 11: SINGLE-PURPOSE TOOL DESIGN ──────────────────────────────

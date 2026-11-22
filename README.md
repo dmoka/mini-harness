@@ -20,6 +20,29 @@ python /path/to/agent.py                                   # chat mode
 
 The default model is `claude-opus-5-5`. Set `MINI_HARNESS_MODEL` to use another model.
 
+An approval question (plan mode, an `ask` command) reads one line from stdin. `y` approves; anything else, or the end of input, is a no. So `echo y | python agent.py --plan "..."` approves the plan, and `</dev/null` declines every question.
+
+### Without an API key: the claude CLI backend
+
+If the `claude` CLI is logged in (for example with a Claude subscription), the agent can use it as the model:
+
+```bash
+cd your-repo
+MINI_HARNESS_BACKEND=claude-cli python /path/to/agent.py "fix the failing test"
+```
+
+`claude_cli.py` runs one `claude -p` call per model call, with the prompt on stdin and the repo as the working folder:
+
+- `--tools ""` turns off all Claude Code tools. The mini-harness runs every tool, so the permission rules, hooks and plan mode stay in force.
+- `--system-prompt` replaces Claude Code's system prompt with the mini-harness prompt. `--setting-sources ""`, `--strict-mcp-config` and `--disable-slash-commands` keep out user settings, hooks, CLAUDE.md files, MCP servers and skills.
+- `--max-turns 1`, `--output-format json`, `--no-session-persistence`.
+
+The tool protocol is text. The tool schemas go in the system prompt, and the conversation goes on stdin as `<user>`, `<assistant>` and `<tool_result>` entries. The model ends its answer with a fenced `tool_calls` block that holds a JSON array of `{"name": ..., "input": {...}}`. The adapter turns it into blocks with the same fields as SDK blocks (`type`, `id`, `name`, `input`, `text`). A block that is not valid JSON gets one retry with the parse error; a second failure raises an error.
+
+Environment variables: `MINI_HARNESS_CLI_TIMEOUT` (seconds per call, default 300), `MINI_HARNESS_CLAUDE_BIN` (path to `claude`). The child process gets the parent environment without the `CLAUDE*` and `CMUX*` variables, so a run inside a Claude Code session does not attach to that session.
+
+This backend is slower than the SDK (each call starts a new `claude` process, about 3 to 10 seconds) and has no native tool use or thinking-block handling. Use the SDK backend when you have an API key.
+
 ## The 12 patterns
 
 | # | Pattern | Where in `agent.py` |
@@ -65,7 +88,7 @@ pip install pytest
 pytest -q
 ```
 
-One test per pattern. A fake model replaces `call_model`, so the tests make no API calls.
+One test per pattern. A fake model replaces `call_model`, so the tests make no API calls. `tests/test_claude_cli.py` tests the CLI backend's prompt rendering and reply parsing without running `claude`.
 
 ## Where Claude Code does more
 

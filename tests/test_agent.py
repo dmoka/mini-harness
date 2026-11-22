@@ -242,3 +242,23 @@ def test_12_stop_hook_exit_2_makes_the_loop_continue(repo, monkeypatch):
                  reply(text("Done, tests pass.")))
     assert agent.run_loop(agent.Session(), "task") == "Done, tests pass."
     assert model.calls[1].messages[-1]["content"] == "Tests fail. Fix them before you finish."
+
+
+@pytest.mark.parametrize("stdin, answer", [("y\n", True), ("n\n", False), ("", False)])
+def test_ask_human_reads_a_piped_answer_and_end_of_input_is_no(monkeypatch, stdin, answer):
+    import io
+    monkeypatch.setattr(agent.sys, "stdin", io.StringIO(stdin))
+    assert agent.ask_human("Approve?") is answer
+
+
+def test_a_crashing_tool_returns_an_error_text(repo, monkeypatch):
+    model = fake(monkeypatch, reply(use("glob", pattern="/etc/*")), reply(text("ok")))
+    agent.run_loop(agent.Session(), "task")
+    assert results(model.calls[1])[0].startswith("Error:")
+
+
+def test_12_stop_hook_does_not_run_in_plan_mode(repo, monkeypatch):
+    write(repo, ".agent/settings.json", json.dumps({"hooks": {"Stop": [
+        "echo 'Tests fail.' >&2; exit 2"]}}))
+    fake(monkeypatch, reply(text("Here is my plan.")))
+    assert agent.run_loop(agent.Session(mode="plan"), "task") == "Here is my plan."
