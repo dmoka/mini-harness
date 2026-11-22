@@ -464,7 +464,7 @@ def compact(messages: list, keep_last: int = 10) -> list:
                     b["content"] = f"[tool output removed, {len(str(b['content']))} chars]"
     summary = final_text(call_model(
         "Summarize this coding session for the agent that continues it. "
-        "Keep decisions, file paths, failing test names and open steps.",
+        "Keep decisions, file paths, gotchas and the next step.",
         [{"role": "user", "content": transcript(old)}], []))
     return [{"role": "user", "content": f"Summary of the earlier session:\n{summary}"}] + recent
 
