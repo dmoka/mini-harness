@@ -289,3 +289,16 @@ def test_glob_lists_a_skipped_folder_only_when_the_pattern_names_it(repo):
     agent.write_memory("deploy", "how to deploy", "steps")
     assert ".agent" not in agent.glob("**/*.md")
     assert ".agent/memory/deploy.md" in agent.glob(".agent/memory/*.md")
+
+
+def test_5_compaction_starts_at_90_percent_of_the_window(monkeypatch):
+    assert agent.COMPACT_AT == int(agent.CONTEXT_WINDOW * 0.9)
+    calls = []
+    monkeypatch.setattr(agent, "compact", lambda m: calls.append(len(m)) or m[-1:])
+    s = agent.Session()
+    s.messages[:] = [{"role": "user", "content": "x" * (agent.COMPACT_AT * 4 - 100)}]
+    agent.maybe_compact(s)
+    assert calls == []  # under 90 %: no compaction
+    s.messages.append({"role": "assistant", "content": "y" * 1000})
+    agent.maybe_compact(s)
+    assert calls == [2]

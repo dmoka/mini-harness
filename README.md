@@ -94,7 +94,7 @@ Approval questions (plan mode, an `ask` command) read one line from stdin. `y` a
 
 The `claude-cli` backend turns off all Claude Code tools (`--tools ""`) and replaces its system prompt (`--system-prompt`), so mini-harness runs every tool and its permission rules, hooks and plan mode stay in force. `--setting-sources ""`, `--strict-mcp-config` and `--disable-slash-commands` keep out your user settings, hooks, CLAUDE.md files, MCP servers and skills. A reply with a malformed `tool_calls` block gets one retry with the parse error.
 
-Environment variables: `MINI_HARNESS_BACKEND`, `MINI_HARNESS_MODEL`, `MINI_HARNESS_CLI_TIMEOUT` (seconds per call, default 300), `MINI_HARNESS_CLAUDE_BIN` (path to `claude`).
+Environment variables: `MINI_HARNESS_BACKEND`, `MINI_HARNESS_MODEL`, `MINI_HARNESS_CONTEXT_WINDOW` (tokens, default 200000; compaction starts at 90%), `MINI_HARNESS_CLI_TIMEOUT` (seconds per call, default 300), `MINI_HARNESS_CLAUDE_BIN` (path to `claude`).
 
 ## Tests
 
@@ -103,7 +103,7 @@ pip install pytest
 pytest -q
 ```
 
-42 tests, at least one per pattern. A fake model replaces `call_model`, so the tests make no API calls. `tests/test_claude_cli.py` tests the CLI backend's prompt rendering and reply parsing without running `claude`.
+43 tests, at least one per pattern. A fake model replaces `call_model`, so the tests make no API calls. `tests/test_claude_cli.py` tests the CLI backend's prompt rendering and reply parsing without running `claude`.
 
 ## Where Claude Code does more
 

@@ -436,11 +436,16 @@ def git(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess:
 # Near the limit, old tool outputs become one-line stubs, and a summary replaces
 # the old messages. The last messages stay as they are.
 
-COMPACT_AT = 400_000  # characters, about 100K tokens
+CONTEXT_WINDOW = int(os.environ.get("MINI_HARNESS_CONTEXT_WINDOW", 200_000))  # tokens
+COMPACT_AT = int(CONTEXT_WINDOW * 0.9)  # compact when the window is 90% full
+
+
+def estimate_tokens(messages: list) -> int:
+    return len(str(messages)) // 4  # about 4 characters per token
 
 
 def maybe_compact(s: Session):
-    if len(str(s.messages)) > COMPACT_AT:
+    if estimate_tokens(s.messages) > COMPACT_AT:
         s.messages[:] = compact(s.messages)
         s.loaded_rules.clear()  # rules load again from disk: a summary can drop a rule
 
