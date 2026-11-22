@@ -1,5 +1,7 @@
 # mini-harness
 
+![mini-harness](assets/hero.png)
+
 **A coding agent in one Python file, built on the 12 harness patterns of Claude Code.**
 
 Agent = model + harness. The model reads text and writes text. The harness is the code around it: it builds the input, runs the tools, checks the permissions and decides when the work is done. Claude Code and your own agent can call the same model, so the harness explains most of the difference in results.
