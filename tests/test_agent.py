@@ -1,8 +1,10 @@
 """One test per harness pattern. A fake model replaces call_model: no API calls."""
 import copy
 import json
+import os
 import subprocess
 import threading
+import time
 from itertools import count
 from types import SimpleNamespace as NS
 
@@ -111,10 +113,29 @@ def test_4_consolidation_can_write_only_inside_memory(repo, monkeypatch):
          reply(use("edit_file", path="app.py", old="keep me", new="changed")),
          reply(use("delete_file", path=".agent/memory/deploy.md")),
          reply(text("Cleaned.")))
-    monkeypatch.setattr(agent, "git", lambda *a, **k: None)
     assert agent.consolidate_memory() == "Cleaned."
     assert (repo / "app.py").read_text() == "keep me\n"
     assert not (repo / ".agent/memory/deploy.md").exists()
+    assert (repo / ".agent/memory/.last-dream").exists()
+    assert not (repo / ".agent/memory/.dreaming").exists()
+
+
+def test_4_dream_starts_in_the_background_only_when_memory_changed(repo, monkeypatch):
+    started = []
+    monkeypatch.setattr(agent.subprocess, "Popen", lambda cmd, **kw: started.append((cmd, kw)))
+    assert agent.start_dream() is False  # no memory yet
+    agent.write_memory("deploy", "how to deploy", "steps")
+    assert agent.start_dream() is True
+    cmd, kw = started[0]
+    assert cmd[-1] == "--consolidate" and kw["start_new_session"] is True
+    last = repo / ".agent/memory/.last-dream"
+    last.touch()
+    os.utime(last, (time.time() + 10, time.time() + 10))  # newer than every note
+    assert agent.start_dream() is False  # nothing changed since the last dream
+    (repo / ".agent/memory/.dreaming").touch()
+    agent.write_memory("db", "migrations", "run them")
+    assert agent.start_dream() is False  # a dream is already running
+    assert len(started) == 1
 
 
 def test_5_compaction_stubs_old_tool_output_and_keeps_the_last_turns(monkeypatch):
@@ -262,3 +283,9 @@ def test_12_stop_hook_does_not_run_in_plan_mode(repo, monkeypatch):
         "echo 'Tests fail.' >&2; exit 2"]}}))
     fake(monkeypatch, reply(text("Here is my plan.")))
     assert agent.run_loop(agent.Session(mode="plan"), "task") == "Here is my plan."
+
+
+def test_glob_lists_a_skipped_folder_only_when_the_pattern_names_it(repo):
+    agent.write_memory("deploy", "how to deploy", "steps")
+    assert ".agent" not in agent.glob("**/*.md")
+    assert ".agent/memory/deploy.md" in agent.glob(".agent/memory/*.md")

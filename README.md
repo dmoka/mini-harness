@@ -33,7 +33,7 @@ Other modes:
 
 ```bash
 python agent.py --plan "add a /health endpoint"   # read-only until you approve the plan
-python agent.py --consolidate                     # merge and clean up the memory folder
+python agent.py --consolidate                     # clean up the memory now (it also runs in the background after a session)
 python agent.py                                   # chat mode: one session, many tasks
 ```
 
@@ -48,7 +48,7 @@ The default model is `claude-opus-5-5`. Set `MINI_HARNESS_MODEL` to use another 
 | 1 | Persistent instruction file | Reads `AGENTS.md` from disk and puts it into every model call | `build_prompt`, `load_rules` |
 | 2 | Scoped context assembly | Loads a subfolder's `AGENTS.md` the first time a tool touches a file in it | `rules_for`, `on_file_touched` |
 | 3 | Tiered memory | Sends a 200-line memory index on every call; topic files only on request | `memory_index`, `read_memory` |
-| 4 | Dream consolidation | A separate run merges duplicate notes and deletes stale ones, then commits | `consolidate_memory` |
+| 4 | Dream consolidation | When a session ends and the memory changed, a background process merges duplicate notes and deletes stale ones | `start_dream`, `consolidate_memory` |
 | 5 | Progressive context compaction | Near the limit, stubs old tool outputs and replaces old turns with a summary | `maybe_compact`, `compact` |
 | 6 | Explore-plan-act loop | Plan mode refuses write tools until you approve the plan | `call_tool`, `exit_plan` |
 | 7 | Context-isolated subagents | Runs a task in a new, empty conversation; only the final report comes back | `run_subagent` |
@@ -80,7 +80,7 @@ Put rules in `AGENTS.md` at the repo root and in any subfolder. Put permissions 
 - A command that matches no rule is an **ask**: the agent asks you before it runs.
 - A hook gets the event as JSON on stdin. Exit code 2 blocks the action, and the hook's stderr goes back to the model.
 - A `Stop` hook that exits with 2 sends the agent back into the loop, at most 3 times. The example above means the agent cannot finish while the tests fail.
-- Memory lives in `.agent/memory/`: `MEMORY.md` is the index, one `.md` file per topic.
+- Memory lives in `.agent/memory/`: `MEMORY.md` is the index, one `.md` file per topic. The background cleanup writes its log to `.agent/memory/dream.log` and records its last run in `.agent/memory/.last-dream`.
 
 Approval questions (plan mode, an `ask` command) read one line from stdin. `y` approves; anything else, or the end of input, is a no. `echo y | python agent.py --plan "..."` approves the plan; `</dev/null` declines every question.
 
@@ -103,7 +103,7 @@ pip install pytest
 pytest -q
 ```
 
-40 tests, at least one per pattern. A fake model replaces `call_model`, so the tests make no API calls. `tests/test_claude_cli.py` tests the CLI backend's prompt rendering and reply parsing without running `claude`.
+42 tests, at least one per pattern. A fake model replaces `call_model`, so the tests make no API calls. `tests/test_claude_cli.py` tests the CLI backend's prompt rendering and reply parsing without running `claude`.
 
 ## Where Claude Code does more
 

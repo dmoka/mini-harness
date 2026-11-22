@@ -280,8 +280,9 @@ def grep(pattern):
 
 @tool("List files that match a glob pattern, e.g. src/**/*.py.", pattern="string")
 def glob(pattern):
+    skip = SKIP - set(Path(pattern).parts)  # ".agent/memory/*" may list .agent
     hits = [str(p.relative_to(ROOT)) for p in ROOT.glob(pattern)
-            if p.is_file() and not SKIP & set(p.relative_to(ROOT).parts)]
+            if p.is_file() and not skip & set(p.relative_to(ROOT).parts)]
     return "\n".join(sorted(hits)[:200]) or "No files."
 
 
@@ -388,8 +389,9 @@ def write_memory(name, summary, body):
 
 
 # ── PATTERN 4: DREAM CONSOLIDATION ──────────────────────────────────────
-# A separate agent run cleans the memory folder. It can write only there,
-# and one git commit per run makes every deletion recoverable.
+# When a session ends and the memory changed, a background process starts.
+# It is a separate agent run with its own context that can write only in the
+# memory folder. Your session pays no tokens for it and does not wait for it.
 
 CONSOLIDATE_PROMPT = (
     f"You clean up the memory folder {AGENT_DIR}/memory. Merge duplicate notes. "
@@ -398,13 +400,32 @@ CONSOLIDATE_PROMPT = (
 )
 
 
+def start_dream() -> bool:
+    """Start `agent.py --consolidate` in the background if the memory changed."""
+    last, lock = memory_dir() / ".last-dream", memory_dir() / ".dreaming"
+    notes = list(memory_dir().glob("*.md")) if memory_dir().is_dir() else []
+    if CHILD or not notes or lock.exists():
+        return False
+    if last.exists() and max(f.stat().st_mtime for f in notes) <= last.stat().st_mtime:
+        return False  # nothing changed since the last dream
+    with open(memory_dir() / "dream.log", "a") as log:
+        subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "--consolidate"],
+                         cwd=ROOT, stdout=log, stderr=log, stdin=subprocess.DEVNULL,
+                         start_new_session=True)  # survives the end of this session
+    return True
+
+
 def consolidate_memory() -> str:
-    s = Session(active=["glob", "read_file", "edit_file", "delete_file"],
-                system_extra=CONSOLIDATE_PROMPT, allowed_paths=[memory_dir()])
-    report = run_loop(s, "Consolidate the memory folder now.")
-    git("add", "-A", str(memory_dir()))
-    git("commit", "-q", "-m", "memory: consolidation")
-    return report
+    lock = memory_dir() / ".dreaming"
+    lock.touch()  # a second dream does not start while this one runs
+    try:
+        s = Session(active=["glob", "read_file", "edit_file", "delete_file"],
+                    system_extra=CONSOLIDATE_PROMPT, allowed_paths=[memory_dir()])
+        report = run_loop(s, "Consolidate the memory folder now.")
+        (memory_dir() / ".last-dream").touch()
+        return report
+    finally:
+        lock.unlink(missing_ok=True)
 
 
 def git(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess:
@@ -601,16 +622,21 @@ def main(argv: list[str]):
     s = Session()
     if argv[:1] == ["--plan"]:
         s.mode, argv = "plan", argv[1:]
-    if argv:
-        print(run_loop(s, " ".join(argv)))
-        return
-    while True:  # chat mode: one session, many tasks
-        try:
-            task = input("\nyou> ").strip()
-        except EOFError:
+    try:
+        if argv:
+            print(run_loop(s, " ".join(argv)))
             return
-        if task:
-            print(run_loop(s, task))
+        while True:  # chat mode: one session, many tasks
+            try:
+                task = input("\nyou> ").strip()
+            except EOFError:
+                return
+            if task:
+                print(run_loop(s, task))
+    finally:
+        if start_dream():  # pattern 4: memory cleanup in a background process
+            print(f"(memory cleanup started in the background: {AGENT_DIR}/memory/dream.log)",
+                  file=sys.stderr)
 
 
 if __name__ == "__main__":
