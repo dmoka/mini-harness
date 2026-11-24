@@ -299,11 +299,11 @@ def bash(command):
 # call. The model never opens the file: the text is part of its input.
 
 def load_rules(path: Path, depth: int = 0) -> str:
-    """Read a rules file. A line "@other.md" loads that file too, max 5 levels."""
+    """Read a rules file. A line "@other.md" loads that file too, max 4 hops (as in Claude Code)."""
     out = []
     for line in path.read_text().splitlines():
         target = path.parent / line[1:].strip()
-        if line.startswith("@") and depth < 5 and target.is_file():
+        if line.startswith("@") and depth < 4 and target.is_file():
             out.append(load_rules(target, depth + 1))
         else:
             out.append(line)
